@@ -129,6 +129,15 @@ program.command('heal')
     console.log(JSON.stringify(governor.selfHeal(), null, 2));
   });
 
+program.command('recap')
+  .description('Generate a daily technical recap')
+  .action(async () => {
+    const RecapGenerator = require('../src/recap.js');
+    const generator = new RecapGenerator(governor);
+    const result = await generator.generateRecap();
+    console.log(JSON.stringify(result, null, 2));
+  });
+
 program.command('vault')
   .description('Manage encrypted API keys')
   .argument('<action>', 'Action: list, set, get')

@@ -3,7 +3,10 @@ const path = require('path');
 
 class Governor {
     constructor(options = {}) {
-        this.stateFile = options.stateFile || path.join(process.cwd(), 'state.json');
+        const workspaceState = path.join(process.cwd(), '..', 'state.json');
+        const localState = path.join(process.cwd(), 'state.json');
+        
+        this.stateFile = options.stateFile || (fs.existsSync(workspaceState) ? workspaceState : localState);
         
         // Priority Weights
         this.PRIORITY_MAP = { 'critical': 4, 'high': 3, 'medium': 2, 'low': 1 };
