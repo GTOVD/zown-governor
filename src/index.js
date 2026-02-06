@@ -218,7 +218,7 @@ class Governor {
         // Status Determination
         if (autonomyBudget <= 0) {
             return { status: 'RED', reason: 'throttled_or_reserve', autonomyBudget, mode: hourConfig.mode };
-        } else if (autonomyBudget < 5) {
+        } else if (autonomyBudget < 10) {
             return { status: 'YELLOW', reason: 'low_budget', autonomyBudget, mode: hourConfig.mode };
         } else {
             return { status: 'GREEN', reason: 'good', autonomyBudget, mode: hourConfig.mode };
@@ -243,7 +243,7 @@ class Governor {
         state.config.currentUsage.thisMinute = state.config.currentUsage.requestLog.length;
         
         if (!state.config.currentUsage.tpmUsed) state.config.currentUsage.tpmUsed = 0;
-        state.config.currentUsage.tpmUsed += tokens;
+        state.config.currentUsage.tpmUsed += tokens; if (state.config.currentUsage.tpmUsed > (this.TPM_LIMIT * 0.95)) { state.config.currentUsage.shouldPause = true; }
 
         state.config.currentUsage.lastReset = new Date().toISOString(); 
         
