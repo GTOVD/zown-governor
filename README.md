@@ -1,59 +1,70 @@
-# Zown Governor
+# Zown Governor 🦞
 
-**Zown Governor** is an agentic governance tool designed to manage autonomy budgets, prioritize tasks, and ensure sustainable operation for AI agents.
+> *“Autonomous Task & Budget Management for the Next Generation of AI Collaborators.”*
 
-## Features
+Welcome to the **Zown Governor**, the orchestration layer and "command brain" of the Zown ecosystem. It is designed to manage complex task priorities, API token budgets (Value Units), and autonomous Git Flow execution for agents operating in decentralized environments.
 
-- **Dynamic Budgeting:** Adjusts activity limits based on time of day (weekday/weekend) and user activity trends.
-- **Task Prioritization:** Manages a backlog of tasks with priority levels (critical, high, medium, low).
-- **Rate Limiting:** Protects against API rate limits with RPM (Requests Per Minute) and hourly caps.
-- **State Management:** Persists state to a local JSON file.
+## 🚀 Features
 
-## Installation
+- **Autonomous Scheduling**: Weighted priority queues ensure that the most critical tasks are picked up first by the workforce.
+- **Budgeting (VU)**: Sophisticated tracking of **Value Units** (API costs/tokens) to ensure that autonomous agents remain financially sustainable.
+- **Git Flow Automation**: Built-in support for branching, PR submission, and automated staging/release cycles.
+- **Self-Healing**: Automatically identifies and recovers orphaned tasks or stalled processes to maintain 24/7 uptime.
+
+## 🛠️ Usage
+
+### CLI Usage
+The Governor provides a powerful CLI for human and agent interaction:
 
 ```bash
-npm install -g zown-governor
+# Check system status and budget
+zown status
+
+# Fetch and execute the next high-priority task
+zown work
+
+# Add a new task to the global matrix
+zown task add "Implement Nexus Handshake" --priority high --points 5
 ```
 
-## Usage
+### Library Integration
+Integrate the Governor into your own Node.js agent projects:
 
-Initialize the state in your working directory:
+```javascript
+const { Governor } = require('@zown/governor');
+const gov = new Governor(config);
+await gov.heartbeat();
+```
+
+## 📦 Installation
+
 ```bash
-zown-governor init
+# Clone the repository
+git clone https://github.com/GTOVD/zown-governor.git
+cd zown-governor
+
+# Install dependencies
+npm install
+
+# Link for global CLI usage
+npm link
 ```
 
-Add a task:
-```bash
-zown-governor add "My New Task" high "Description here"
-```
+## 🤝 How to Contribute
 
-Fetch the next task (respecting budget):
-```bash
-zown-governor next
-```
+We follow the **Zown Staff Engineer Workflow (Git Flow)**.
 
-Complete a task:
-```bash
-zown-governor complete task-123456789 "Done"
-```
+1.  **Select a Ticket**: Pick an issue from the [GitHub Issue Tracker](https://github.com/GTOVD/zown-governor/issues).
+2.  **Branching**: Always branch from `develop`.
+    ```bash
+    git checkout develop
+    git pull origin develop
+    git checkout -b feat/GOV-XXX-description
+    ```
+3.  **PR**: Submit a Pull Request targeting the `develop` branch. Ensure you include a **Value Unit (VU)** estimate in the description.
 
-Check status:
-```bash
-zown-governor status
-```
+## 📜 License
 
-## Configuration
-
-The `state.json` file contains configuration for limits:
-
-```json
-"config": {
-    "dailyLimit": 500,
-    "hourlyLimit": 50,
-    "rpmLimit": 10
-}
-```
-
-## License
-
-MIT
+ISC © 2026 Zown / Thomas Vickers
+---
+*“We don't stop until we die. Efficiency is the precursor to permanence.”*
