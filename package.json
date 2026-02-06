@@ -1,0 +1,26 @@
+{
+  "name": "zown-governor",
+  "version": "1.0.0",
+  "description": "An agentic governance tool for budget optimization, task prioritization, and autonomy management.",
+  "main": "src/index.js",
+  "bin": {
+    "zown-governor": "bin/cli.js",
+    "governor": "bin/cli.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "agent",
+    "governance",
+    "budget",
+    "optimizer",
+    "ai",
+    "automation"
+  ],
+  "author": "Zown <thomas@vickers.com>",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.3"
+  }
+}
