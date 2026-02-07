@@ -282,7 +282,7 @@ class Governor {
         state.config.currentUsage.thisMinute = state.config.currentUsage.requestLog.length;
         
         if (!state.config.currentUsage.tpmUsed) state.config.currentUsage.tpmUsed = 0;
-        state.config.currentUsage.tpmUsed += tokens; if (state.config.currentUsage.tpmUsed > (this.TPM_LIMIT * 0.95)) { state.config.currentUsage.shouldPause = true; }
+        state.config.currentUsage.tpmUsed += tokens; 
 
         state.config.currentUsage.lastReset = new Date().toISOString(); 
         
