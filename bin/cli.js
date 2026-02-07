@@ -185,4 +185,17 @@ program.command('domains')
     }
   });
 
+program.command('check')
+  .description('Check if it is safe to proceed (returns OK or WAIT <seconds>)')
+  .action(() => {
+    const status = governor.getDynamicStatus();
+    if (status.status === 'RED' && status.waitSeconds) {
+      console.log(`WAIT ${status.waitSeconds}`);
+    } else if (status.status === 'RED') {
+      console.log('WAIT 60');
+    } else {
+      console.log('OK');
+    }
+  });
+
 program.parse();
