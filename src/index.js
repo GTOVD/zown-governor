@@ -229,11 +229,13 @@ class Governor {
         
         // TPM Protection
         if (tpmUsed >= (this.TPM_LIMIT * this.TPM_THRESHOLD)) {
+            const waitSeconds = Math.ceil(this.TPM_PAUSE_MS / 1000);
+            console.log(`[Governor] TPM SAFEGUARD TRIGGERED: Pausing for ${waitSeconds} seconds.`);
             return { 
                 status: 'RED', 
                 reason: 'tpm_safeguard', 
                 autonomyBudget: 0, 
-                waitSeconds: Math.ceil(this.TPM_PAUSE_MS / 1000), 
+                waitSeconds, 
                 mode: hourConfig.mode 
             };
         }
