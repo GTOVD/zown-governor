@@ -23,10 +23,10 @@ class Governor {
         const CloudCostMonitor = require('./finance/cloud_cost_monitor');
         this.costMonitor = new CloudCostMonitor(this);
 
-        // TPM Limits (1M TPM default for Gemini)
+        // TPM Limits (Tier 1 Google Gemini Flash 3)
         this.TPM_LIMIT = 1000000;
-        this.TPM_THRESHOLD = 0.5; // Conservative: Pause at 50%
-        this.TPM_YELLOW_THRESHOLD = 0.25; // Pre-cautionary Yellow
+        this.TPM_THRESHOLD = 0.75; // Pause at 75%
+        this.TPM_YELLOW_THRESHOLD = 0.5; 
         this.WINDOW_SIZE_MS = 60000; // 1 minute
         
         // Rate Limit Wait Timer (PAUSE mode)
