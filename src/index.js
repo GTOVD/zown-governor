@@ -25,8 +25,12 @@ class Governor {
 
         // TPM Limits (1M TPM default for Gemini)
         this.TPM_LIMIT = 1000000;
-        this.TPM_THRESHOLD = 0.9; // Pause at 90%
+        this.TPM_THRESHOLD = 0.5; // Conservative: Pause at 50%
+        this.TPM_YELLOW_THRESHOLD = 0.25; // Pre-cautionary Yellow
         this.WINDOW_SIZE_MS = 60000; // 1 minute
+        
+        // Rate Limit Wait Timer (PAUSE mode)
+        this.TPM_PAUSE_MS = 60000; // 1 minute pause when hitting safeguards
 
         // Circuit Breaker (GOV-024)
         this.CIRCUIT_BREAKER_THRESHOLD = 5; // 5 errors
@@ -82,13 +86,31 @@ class Governor {
 
     saveState(state) {
         const tempFile = `${this.stateFile}.tmp`;
+        const lockFile = `${this.stateFile}.lock`;
+        let lockFd;
+
         try {
+            // Simple file-based locking
+            // O_CREAT | O_EXCL ensures we fail if the lock file already exists
+            lockFd = fs.openSync(lockFile, 'wx');
+            
             fs.writeFileSync(tempFile, JSON.stringify(state, null, 2));
             fs.renameSync(tempFile, this.stateFile);
         } catch (e) {
-            console.error("Critical: Failed to save state atomically.", e);
-            // Fallback to direct write if rename fails? No, better to keep current file safe.
-            // But we might want to know why it failed.
+            if (e.code === 'EEXIST') {
+                console.error("Critical: State file is locked. Another process is writing.");
+            } else {
+                console.error("Critical: Failed to save state atomically.", e);
+            }
+        } finally {
+            if (lockFd) {
+                fs.closeSync(lockFd);
+                try {
+                    fs.unlinkSync(lockFile);
+                } catch (unlinkError) {
+                    console.error("Failed to remove lock file:", unlinkError);
+                }
+            }
         }
     }
 
@@ -207,7 +229,22 @@ class Governor {
         
         // TPM Protection
         if (tpmUsed >= (this.TPM_LIMIT * this.TPM_THRESHOLD)) {
-            return { status: 'RED', reason: 'tpm_safeguard', autonomyBudget: 0, waitSeconds: 60, mode: hourConfig.mode };
+            return { 
+                status: 'RED', 
+                reason: 'tpm_safeguard', 
+                autonomyBudget: 0, 
+                waitSeconds: Math.ceil(this.TPM_PAUSE_MS / 1000), 
+                mode: hourConfig.mode 
+            };
+        }
+
+        if (tpmUsed >= (this.TPM_LIMIT * (this.TPM_YELLOW_THRESHOLD || 0.25))) {
+            return { 
+                status: 'YELLOW', 
+                reason: 'tpm_precautionary', 
+                autonomyBudget: Math.min(autonomyBudget, 2), 
+                mode: hourConfig.mode 
+            };
         }
 
         // Burst Protection (RPM)
