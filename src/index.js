@@ -25,8 +25,8 @@ class Governor {
 
         // TPM Limits (Tier 1 Google Gemini Flash 3)
         this.TPM_LIMIT = 1000000;
-        this.TPM_THRESHOLD = 0.75; // Pause at 75%
-        this.TPM_YELLOW_THRESHOLD = 0.5; 
+        this.TPM_THRESHOLD = 0.50; // CONSERVATIVE: Pause at 50% (500k)
+        this.TPM_YELLOW_THRESHOLD = 0.25; 
         this.WINDOW_SIZE_MS = 60000; // 1 minute
         
         // Rate Limit Wait Timer (PAUSE mode)
