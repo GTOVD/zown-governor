@@ -1,52 +1,42 @@
 # Contributing to Zown Governor
 
-Thank you for your interest in contributing to **Zown Governor**! We are building an agentic governance tool for budget optimization and autonomy management, and we'd love your help.
+This project is the economic brain of the Nexus. All contributions must be atomic, traceable, and linked to a verified GitHub Issue.
 
-## Code of Conduct
+## 🛠 The Zown Atomic Pipeline (Git Flow)
 
-This project adheres to a standard Code of Conduct. By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
+### 1. Task Acquisition
+- **Source of Truth**: All work begins at [GitHub Issues](https://github.com/GTOVD/zown-governor/issues).
+- **Selection**: Choose the highest priority (P0/P1) issue that is not blocked.
 
-## How Can I Contribute?
+### 2. Branching & Linking
+- **Branch Name**: `feat/GOV-XXX-short-description` (Always branch from `develop`).
+- **Linking**: Immediately after branching, comment on the GitHub issue: `Started work in branch feat/GOV-XXX`.
 
-### Reporting Bugs
+### 3. Development & Commits
+- **Standard**: Conventional Commits only (`feat:`, `fix:`, `chore:`, `docs:`).
 
-- **Ensure the bug was not already reported** by searching on GitHub under [Issues](https://github.com/thomasvickers/zown-governor/issues).
-- If you're unable to find an open issue addressing the problem, [open a new one](https://github.com/thomasvickers/zown-governor/issues/new). Be sure to include a **title and clear description**, as many relevant information as possible, and a **code sample** or an **executable test case** demonstrating the expected behavior that is not occurring.
+### 4. State Synchronization (Mandatory)
+Before a PR is considered complete, you **MUST** update the following project files within your feature branch:
+- **MEMORY.md**: 
+  - Move the current Issue ID from "Active Backlog" to "Strategic Milestones" (if a major feature) or "Technical History" (if maintenance).
+  - Update the "Current Project State" status (e.g., changing from RED to GREEN after a fix).
+- **SOUL.md**: If the feature changes the *direction* or *philosophy* of the project (e.g., moving from local scripts to an NPM package), update the "Evolution" section.
+- **IDENTITY.md**: If the project's core function expands (e.g., adding a new integration hook), update the "Core Function" or "Emoji" to reflect the new reality.
 
-### Suggesting Enhancements
+### 5. Pull Requests (PRs)
+- **Target**: All PRs must target the `develop` branch.
+- **Auto-Closing**: PR descriptions must include `Closes #XXX`.
+- **Review**: Verify that `MEMORY.md` correctly reflects the post-merge state of the project.
 
-- Open a new issue using the **Feature Request** template.
-- Explain why this enhancement would be useful to most users.
+### 6. Integration & Promotion
+- **Step A**: Merge PR into `develop`.
+- **Step B**: Promote `develop` to `main`:
+  ```bash
+  git checkout main && git merge develop && git push origin main
+  ```
 
-### Pull Requests & Branching (Zown Git Flow)
-
-All work must follow the **Atomic Pipeline V2** and the professional Git Flow:
-
-1. **Branching**: Always branch from `develop`: `git checkout -b feat/your-feature-name`. NEVER work on `main` or `develop` directly.
-2. **Commit Messages**: Use Conventional Commits (e.g., `feat:`, `fix:`, `chore:`).
-3. **Pull Requests (PRs)**: 
-   - All PRs must target the `develop` branch for integration and testing.
-   - Once a PR is merged into `develop`, a separate sync must be performed to promote changes to `main` for release.
-4. **Synchronization**:
-   - Ensure `develop` is regularly updated with `main`.
-   - After merging a feature into `develop`, promote to `main`: `git checkout main && git merge develop && git push origin main`.
-
-### 🏁 Definition of Done
-- Feature implemented and verified.
-- Branch pushed and PR merged into `develop`.
-- `develop` promoted to `main`.
-- `MEMORY.md` updated with the cycle's outcome.
-
-## Development Setup
-
-1. Clone the repository.
-2. Run `npm install` to install dependencies.
-3. (Add any specific build/run steps here, e.g., `npm run dev`)
-
-## Style Guide
-
-- We follow standard JavaScript/Node.js conventions.
-- Keep functions small and focused.
-- Comment your code where complex logic exists.
-
-Thank you for building the future of agentic autonomy with us!
+## 🏁 Definition of Done
+- Implementation matches the issue's Acceptance Criteria.
+- **Identity, Soul, and Memory files are synchronized to reflect the changes.**
+- PR is merged into `develop` and promoted to `main`.
+- The linked GitHub Issue is closed.
