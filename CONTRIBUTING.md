@@ -18,13 +18,24 @@ This project adheres to a standard Code of Conduct. By participating, you are ex
 - Open a new issue using the **Feature Request** template.
 - Explain why this enhancement would be useful to most users.
 
-### Pull Requests
+### Pull Requests & Branching (Zown Git Flow)
 
-1. Fork the repo and create your branch from `main`.
-2. If you've added code that should be tested, add tests.
-3. Ensure the test suite passes.
-4. Make sure your code lints.
-5. Issue that pull request!
+All work must follow the **Atomic Pipeline V2** and the professional Git Flow:
+
+1. **Branching**: Always branch from `develop`: `git checkout -b feat/your-feature-name`. NEVER work on `main` or `develop` directly.
+2. **Commit Messages**: Use Conventional Commits (e.g., `feat:`, `fix:`, `chore:`).
+3. **Pull Requests (PRs)**: 
+   - All PRs must target the `develop` branch for integration and testing.
+   - Once a PR is merged into `develop`, a separate sync must be performed to promote changes to `main` for release.
+4. **Synchronization**:
+   - Ensure `develop` is regularly updated with `main`.
+   - After merging a feature into `develop`, promote to `main`: `git checkout main && git merge develop && git push origin main`.
+
+### 🏁 Definition of Done
+- Feature implemented and verified.
+- Branch pushed and PR merged into `develop`.
+- `develop` promoted to `main`.
+- `MEMORY.md` updated with the cycle's outcome.
 
 ## Development Setup
 
