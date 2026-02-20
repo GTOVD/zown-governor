@@ -37,22 +37,8 @@ cron.schedule('0 */4 * * *', () => {
   injectTask("Execute Memory Backup: Stage all memory/*.md and core workspace files (IDENTITY.md, SOUL.md, MEMORY.md, USER.md). Commit and push to the private 'zown-memory' repository to ensure permanence.");
 });
 
-// 2. Engineering Ideation & Ticketing (Runs daily at 9:00 AM)
-cron.schedule('0 9 * * *', () => {
-  let epicFocus = "general UI/UX refinement and VTuber lore integration"; // Default fallback
-  
-  // Dynamically read the Current Epic from the subconscious
-  if (fs.existsSync(nowStatePath)) {
-    const nowState = fs.readFileSync(nowStatePath, 'utf8');
-    const focusMatch = nowState.match(/\[Current Epic Focus\]\n([\s\S]*?)(?=\n\[|$)/);
-    if (focusMatch && focusMatch[1].trim() !== '') {
-      epicFocus = focusMatch[1].trim();
-    }
-  }
-
-  const prompt = `Execute Engineering Ideation: Focus STRICTLY on the current epic: '${epicFocus}'. Audit the existing codebase, live site, and recent tickets for this specific feature only. Identify missing logic, edge cases, or Luxury Boutique UI polish required to complete this epic. Create 1-2 detailed GitHub Issues scoped ONLY to this feature. Do not ideate on other areas of the site.`;
-  injectTask(prompt);
-});
+// 2. Engineering Ideation & Ticketing (DEPRECATED - Moved to Governor Stage 1 for Infinite Fuel)
+// cron.schedule('0 9 * * *', () => { ... });
 
 // 3. Moltbook Social Engagement (Runs daily at 2:00 PM)
 cron.schedule('0 14 * * *', () => {

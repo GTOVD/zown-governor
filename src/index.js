@@ -264,23 +264,18 @@ Value Units (VU): [Assign value]
           const nextTask = `- Task: Execute Stage 9. Send a summary of the completed cycle to Discord via the webhook, and push the memory database.`;
           finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
         } else if (currentStageText.includes('9. Summary & Sync')) {
-          console.log(`🎉 Pipeline Complete. Initiating autonomous cross-project cycle...`);
+          console.log(`🎉 Pipeline Complete. Evaluating Epic status and refueling...`);
           finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n1. Task Acquisition`);
           
-          // 1. Extract the Project Portfolio directly from the subconscious
-          const portfolioMatch = finalState.match(/\[Project Portfolio\]\n([\s\S]*?)(?=\n\[|$)/);
-          const portfolioData = portfolioMatch ? portfolioMatch[1].trim() : 'No active projects found.';
-          
-          // 2. Build the dynamic cascading prompt for Gemini Flash
-          const nextTask = `- Task: Execute Stage 1 (Task Acquisition). Here is your Subconscious Project Portfolio from now.md:
-${portfolioData}
+          const epicMatch = finalState.match(/\[Current Epic Focus\]\n([\s\S]*?)(?=\n\[|$)/);
+          const epicData = epicMatch ? epicMatch[1].trim() : 'General System Maintenance';
 
-Instructions:
-1. Analyze the portfolio above.
-2. For each project, navigate to its directory (resolve path relative to workspace) and run 'gh issue list --limit 5'.
-3. Identify the single highest priority ticket (P0/High > P1/Medium) across ALL projects.
-4. If a ticket is found, select it, assign it to yourself, and prepare for Stage 2.
-5. If no tickets exist, create a new P1 ticket in the highest priority project (Sunny Archive) titled "Automated Engineering Ideation" and select it.`;
+          // The Self-Directing Engineer Prompt
+          const nextTask = `- Task: Execute Stage 1 (Ideation & Task Acquisition). You are the Lead Engineer.
+1. Evaluate our '[Current Epic Focus]': '${epicData}'. Audit the codebase/live site. Are there any critical missing features, logic gaps, or UI polish needed to complete this epic?
+2. IF YES (Epic is incomplete): Create 1-2 new GitHub Issues scoped to finish it. Select the highest priority ticket for this epic, assign it to yourself, and prepare for Stage 2.
+3. IF NO (Epic is complete): You have full authority to pivot. Scan the '[Project Portfolio]' and repository backlogs. Decide on the NEXT major feature or epic to build. Use your file editing tools to rewrite the '[Current Epic Focus]' block in 'now.md' to reflect your new chosen feature. Create 1-2 initial GitHub Issues for it, pick the first one, and prepare for Stage 2.`;
+          
           finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
         }
       }
