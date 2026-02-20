@@ -46,6 +46,21 @@ function updateActiveContext(newContext) {
   fs.writeFileSync(nowStatePath, nowState, 'utf8');
 }
 
+// 3. Listen for Discord Bot Commands
+app.post('/webhook/discord', (req, res) => {
+  const { user, command } = req.body;
+  console.log(`💬 Discord Command from ${user}: ${command}`);
+  if (fs.existsSync(nowStatePath)) {
+    let nowState = fs.readFileSync(nowStatePath, 'utf8');
+    const newTask = `- Task: [Initiated via Discord by ${user}] ${command}`;
+    nowState = nowState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${newTask}`);
+    // Reset the pipeline to start the engineering cycle
+    nowState = nowState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n2. Research & Design`);
+    fs.writeFileSync(nowStatePath, nowState, 'utf8');
+  }
+  res.status(200).send('Task added to Governor Queue');
+});
+
 export function startWebhookServer() {
   app.listen(3005, () => {
     console.log("📡 Zown Webhook Receiver active on port 3005");
