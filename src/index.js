@@ -1,174 +1,186 @@
-const fs = require('fs');
-const path = require('path');
+#!/usr/bin/env node
+import { spawn, exec } from 'child_process';
+import { determineModel } from './router.js';
+import { storeInChroma } from './memory.js';
+import { drift } from './drift.js';
+import { startWebhookServer } from './webhook.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-class Governor {
-    constructor(options = {}) {
-        const workspaceState = path.join(process.cwd(), '..', 'state.json');
-        const localState = path.join(process.cwd(), 'state.json');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const HEARTBEAT_INTERVAL = 5000;
+const DRIFT_INTERVAL = 1000 * 60 * 60; // Drift every hour
+let isExecuting = false;
+
+async function startZoneGovernor() {
+  console.log("🧠 Zown Governor Daemon Online.");
+  startWebhookServer(); // Boot up the ears
+
+  // Set up the periodic Drift loop
+  setInterval(async () => {
+    if (isExecuting) return;
+    await drift();
+  }, DRIFT_INTERVAL);
+
+  setInterval(async () => {
+    if (isExecuting) return;
+    
+    const nowStatePath = path.resolve(__dirname, '../../now.md');
+    if (!fs.existsSync(nowStatePath)) return;
+    let nowState = fs.readFileSync(nowStatePath, 'utf8');
+
+    const pendingMatch = nowState.match(/\[Pending Queue\]\s*\n([\s\S]*?)(?=\n\[|$)/);
+    
+    // --- THE INTERNAL MONOLOGUE ---
+    if (!pendingMatch || pendingMatch[1].trim() === '') {
+      const contextMatch = nowState.match(/\[Active Context\]\n([\s\S]*?)(?=\n\[|$)/);
+      const stageMatch = nowState.match(/\[Pipeline Stage\]\n(.*)/);
+      
+      if (contextMatch && contextMatch[1].trim() !== 'System online. No recent webhooks.') {
+        const currentStage = stageMatch ? stageMatch[1].trim() : 'Unknown';
         
-        this.stateFile = options.stateFile || (fs.existsSync(workspaceState) ? workspaceState : localState);
-        
-        this.PRIORITY_MAP = { 'critical': 4, 'high': 3, 'medium': 2, 'low': 1 };
-        
-        this.COSTS = {
-            'chat': 1,
-            'agent_turn': 5,
-            'heartbeat': 1,
-            'cron_job': 3
-        };
+        if (currentStage === '1. Analyze & Ticket') {
+          isExecuting = true;
+          console.log(`🎫 Executing Stage 1 via Local Ollama (Delimiter Strategy)...`);
+          try {
+            // 1. Ask Ollama for the strict Agile ticket format
+            const prompt = `You are a Lead Architect triaging an automated system event. Analyze this error or context: "${contextMatch[1].trim()}". Respond strictly in the following format with no other text. Fill in the bracketed information based on the error.
 
-        const CloudCostMonitor = require('./finance/cloud_cost_monitor');
-        this.costMonitor = new CloudCostMonitor(this);
+TITLE: <Write a concise, actionable title here>
 
-        // Tier 1 Google Gemini Flash 3 Specifications
-        this.TPM_LIMIT = 1000000;
-        this.TPM_THRESHOLD = 0.40; // AGGRESSIVE: Pause at 40% (400k) to account for large next turn
-        this.WINDOW_SIZE_MS = 60000; // 1 minute
-        
-        this.TPM_PAUSE_MS = 60000; // 1 minute pause
+BODY:
+📝 User Story
+As a Lead Architect, I want the system to resolve this issue: [Summarize the technical issue] so that the continuous workflow is maintained.
 
-        this.CIRCUIT_BREAKER_THRESHOLD = 5;
-        this.CIRCUIT_BREAKER_COOLDOWN_MS = 15 * 60 * 1000;
+✅ Acceptance Criteria
+- [Actionable fix 1]
+- [Actionable fix 2]
 
-        this.SCHEDULE = [
-            { hour: 0, weight: 0.1, mode: 'filler' },
-            { hour: 1, weight: 0.1, mode: 'filler' },
-            { hour: 2, weight: 0.1, mode: 'filler' },
-            { hour: 3, weight: 0.1, mode: 'filler' },
-            { hour: 4, weight: 0.2, mode: 'filler' },
-            { hour: 5, weight: 0.4, mode: 'active' },
-            { hour: 6, weight: 0.8, mode: 'active' },
-            { hour: 7, weight: 1.0, mode: 'peak' },
-            { hour: 8, weight: 1.2, mode: 'peak' },
-            { hour: 9, weight: 1.5, mode: 'peak' },
-            { hour: 10, weight: 1.2, mode: 'peak' },
-            { hour: 11, weight: 1.0, mode: 'peak' },
-            { hour: 12, weight: 0.8, mode: 'active' },
-            { hour: 13, weight: 1.0, mode: 'peak' },
-            { hour: 14, weight: 1.2, mode: 'peak' },
-            { hour: 15, weight: 1.2, mode: 'peak' },
-            { hour: 16, weight: 1.0, mode: 'peak' },
-            { hour: 17, weight: 0.8, mode: 'active' },
-            { hour: 18, weight: 0.6, mode: 'active' },
-            { hour: 19, weight: 0.5, mode: 'active' },
-            { hour: 20, weight: 0.4, mode: 'filler' },
-            { hour: 21, weight: 0.3, mode: 'filler' },
-            { hour: 22, weight: 0.2, mode: 'filler' },
-            { hour: 23, weight: 0.1, mode: 'filler' }
-        ];
+📐 Estimates
+Priority: [Assign P0 to P4 based on severity]
+Story Points: [Assign fibonacci estimate 1, 2, 3, 5, 8]
+Value Units (VU): [Assign value]
 
-        const Analytics = require('./analytics');
-        this.analytics = new Analytics(this);
-    }
+🏁 Definition of Done
+- Error no longer occurs in deployment logs.
+- [Additional completion metric]`;
+            
+            const response = await fetch('http://localhost:11434/api/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: 'phi4-mini:latest', prompt: prompt, stream: false })
+            });
+            const data = await response.json();
+            const rawText = data.response.trim();
 
-    loadState() {
-        if (!fs.existsSync(this.stateFile)) return null;
-        try {
-            const state = JSON.parse(fs.readFileSync(this.stateFile, 'utf-8'));
-            if (!state.config.currentUsage.requestLog) state.config.currentUsage.requestLog = [];
-            if (!state.config.currentUsage.tokenLog) state.config.currentUsage.tokenLog = [];
-            return state;
-        } catch (e) {
-            console.error("Error reading state file:", e);
-            return null;
+            // 2. Safely extract the title and body using regex
+            const titleMatch = rawText.match(/TITLE:\s*(.*)/i);
+            const bodyMatch = rawText.match(/BODY:\s*([\s\S]*)/i);
+
+            if (!titleMatch || !bodyMatch) {
+              throw new Error("Local model failed to format the title and body correctly.");
+            }
+
+            // 3. Node.js safely stringifies the raw text to escape quotes/newlines for bash
+            const safeTitle = JSON.stringify(titleMatch[1].trim());
+            const safeBody = JSON.stringify(bodyMatch[1].trim());
+            console.log(`🚀 Opening GitHub Issue: ${safeTitle}`);
+
+            exec(`gh issue create --title ${safeTitle} --body ${safeBody}`, (error, stdout, stderr) => {
+              if (error) {
+                console.error(`🚨 gh execution failed: ${stderr}`);
+                let failState = fs.readFileSync(nowStatePath, 'utf8');
+                failState = failState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\nERROR: Manual Intervention Required`);
+                fs.writeFileSync(nowStatePath, failState, 'utf8');
+              } else {
+                console.log(`✅ Ticket Created: ${stdout.trim()}`);
+                let passState = fs.readFileSync(nowStatePath, 'utf8');
+                passState = passState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n2. Research & Design`);
+                fs.writeFileSync(nowStatePath, passState, 'utf8');
+              }
+              isExecuting = false;
+            });
+          } catch (err) {
+            console.error("🚨 Stage 1 Parsing or Network error:", err.message);
+            let failState = fs.readFileSync(nowStatePath, 'utf8');
+            failState = failState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\nERROR: Manual Intervention Required`);
+            fs.writeFileSync(nowStatePath, failState, 'utf8');
+            isExecuting = false;
+          }
         }
+      }
+      return;
     }
 
-    saveState(state) {
-        const tempFile = `${this.stateFile}.tmp`;
-        try {
-            fs.writeFileSync(tempFile, JSON.stringify(state, null, 2));
-            fs.renameSync(tempFile, this.stateFile);
-        } catch (e) {
-            console.error("Critical: Failed to save state atomically.", e);
-        }
-    }
+    const rawTaskLine = pendingMatch[1].trim().split('\n')[0];
+    const currentTask = rawTaskLine.replace(/^-\s+/, '');
+    if (!currentTask) return;
 
-    _cleanLogs(state) {
-        const now = Date.now();
-        state.config.currentUsage.requestLog = state.config.currentUsage.requestLog.filter(ts => (now - ts) < this.WINDOW_SIZE_MS);
-        state.config.currentUsage.thisMinute = state.config.currentUsage.requestLog.length;
-        state.config.currentUsage.tokenLog = state.config.currentUsage.tokenLog.filter(entry => (now - entry.ts) < this.WINDOW_SIZE_MS);
-        state.config.currentUsage.tpmUsed = state.config.currentUsage.tokenLog.reduce((sum, entry) => sum + entry.amount, 0);
-    }
+    nowState = nowState.replace(rawTaskLine, '');
+    nowState = nowState.replace(/\[Current State\]\n.*/, `[Current State]\nProcessing: ${currentTask}`);
+    fs.writeFileSync(nowStatePath, nowState, 'utf8');
 
-    _checkReset(state) {
-        const now = new Date();
-        const lastReset = new Date(state.config.currentUsage.lastReset);
-        let dirty = false;
+    isExecuting = true;
+    console.log(`\n📥 Intercepted Task: ${currentTask}`);
 
-        if (now.getDate() !== lastReset.getDate() || now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear()) {
-            state.config.currentUsage.today = 0;
-            state.config.currentUsage.thisHour = 0;
-            state.config.currentUsage.lastReset = now.toISOString();
-            dirty = true;
-        } 
-        else if (now.getHours() !== lastReset.getHours()) {
-            state.config.currentUsage.thisHour = 0;
-            state.config.currentUsage.lastReset = now.toISOString();
-            dirty = true;
-        }
+    const route = await determineModel(currentTask);
+    const thinkingLevel = route === 'gemini-3-pro' ? 'high' : 'low';
+    console.log(`🚦 Subconscious Route: ${route} (Translating to --thinking ${thinkingLevel})`);
+
+    const openClawProcess = spawn('openclaw', [
+      'agent', 
+      '--message', currentTask, 
+      '--thinking', thinkingLevel,
+      '--session-id', 'zown-governor-loop'
+    ], { 
+      env: process.env 
+    });
+
+    openClawProcess.stdout.on('data', (data) => {
+      console.log(`🤖 OpenClaw: ${data.toString().trim()}`);
+    });
+
+    openClawProcess.stderr.on('data', (data) => {
+      console.error(`🚨 OpenClaw ERROR: ${data.toString().trim()}`);
+    });
+
+    openClawProcess.on('close', async (code) => {
+      if (code === 0) {
+        console.log(`✅ Task complete. Consolidating memory...`);
+        await storeInChroma(currentTask, { type: 'execution', model: route });
         
-        this._cleanLogs(state);
-        return dirty;
-    }
-
-    getDynamicStatus(state) {
-        if (!state) state = this.loadState();
-        if (!state) return { status: 'RED', autonomyBudget: 0, error: "State not loaded" };
-
-        this._checkReset(state);
-
-        const { today, thisHour, thisMinute, tpmUsed } = state.config.currentUsage;
-        const { dailyLimit, hourlyLimit, rpmLimit } = state.config;
-
-        const now = new Date();
-        const hourConfig = this.SCHEDULE.find(s => s.hour === now.getHours()) || { weight: 1.0, mode: 'active' };
+        let finalState = fs.readFileSync(nowStatePath, 'utf8');
         
-        const predictedUser = 20; 
-        const weightedHourlyLimit = hourlyLimit * hourConfig.weight;
-        const autonomyBudget = Math.max(0, weightedHourlyLimit - thisHour - predictedUser);
-
-        // Hard Caps
-        if (today >= dailyLimit) return { status: 'RED', reason: 'daily_limit', autonomyBudget: 0 };
-        if (thisHour >= weightedHourlyLimit) return { status: 'RED', reason: 'scheduled_throttle', autonomyBudget: 0 };
-        
-        // TPM Protection (Proactive / Predictive)
-        if (tpmUsed >= (this.TPM_LIMIT * this.TPM_THRESHOLD)) {
-            const firstEntry = state.config.currentUsage.tokenLog[0] || { ts: Date.now() };
-            const waitSeconds = Math.ceil((this.WINDOW_SIZE_MS - (Date.now() - firstEntry.ts)) / 1000);
-            return { 
-                status: 'RED', 
-                reason: 'tpm_safeguard', 
-                autonomyBudget: 0, 
-                waitSeconds: Math.max(waitSeconds, 10), 
-                mode: hourConfig.mode 
-            };
+        // --- THE PIPELINE AUTOMATION ---
+        // If we just finished Stage 4, automatically queue Stage 6 (Git Push)
+        const stageMatch = finalState.match(/\[Pipeline Stage\]\n(.*)/);
+        if (stageMatch && stageMatch[1].trim().includes('4. Core Implementation')) {
+          console.log(`🚀 Advancing Pipeline to Stage 6: PR Creation...`);
+          
+          // Advance the stage
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n6. PR Creation`);
+          
+          // Automatically queue the Git Push task
+          const autoPushTask = `- Task: Stage 4 complete. Execute Stage 6: Run git status, add the new files, commit with an Agile formatted message, and git push to the remote repository.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${autoPushTask}`);
+        } else if (stageMatch && stageMatch[1].trim().includes('6. PR Creation')) {
+          console.log(`🎉 Pipeline Complete. Resetting state...`);
+          // Reset the stage so the Internal Monologue can listen for new webhooks
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\nNone. Awaiting Input.`);
         }
 
-        // RPM Protection
-        if (thisMinute >= (rpmLimit || 25)) {
-            return { status: 'RED', reason: 'rpm_burst_limit', autonomyBudget: 0, waitSeconds: 15 };
-        }
-
-        if (autonomyBudget <= 0) return { status: 'RED', reason: 'throttled_or_reserve', autonomyBudget };
-        
-        return { status: 'GREEN', reason: 'good', autonomyBudget, mode: hourConfig.mode };
-    }
-
-    incrementUsage(amount = 1, tokens = 0) {
-        const state = this.loadState();
-        if (!state) return;
-        this._checkReset(state);
-        state.config.currentUsage.today += amount;
-        state.config.currentUsage.thisHour += amount;
-        const now = Date.now();
-        for (let i = 0; i < amount; i++) state.config.currentUsage.requestLog.push(now);
-        if (tokens > 0) state.config.currentUsage.tokenLog.push({ ts: now, amount: tokens });
-        this.saveState(state);
-        this.analytics.trackMetric('apiCalls', amount);
-        if (tokens > 0) this.analytics.trackMetric('tokens', tokens);
-    }
-    // ... remaining task methods ...
+        finalState = finalState.replace(/\[Current State\]\n.*/, `[Current State]\nIdling.`);
+        fs.writeFileSync(nowStatePath, finalState, 'utf8');
+      } else {
+        console.error(`❌ OpenClaw failed with exit code ${code}.`);
+        let failState = fs.readFileSync(nowStatePath, 'utf8');
+        failState = failState.replace(/\[Current State\]\n.*/, `[Current State]\nIdling.`);
+        fs.writeFileSync(nowStatePath, failState, 'utf8');
+      }
+      isExecuting = false;
+    });
+  }, HEARTBEAT_INTERVAL);
 }
-module.exports = Governor;
+
+startZoneGovernor();
