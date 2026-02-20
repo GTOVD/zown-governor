@@ -8,10 +8,23 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+const originalLog = console.log;
+const originalError = console.error;
+console.log = function (...args) {
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+  originalLog(`[${timestamp}]`, ...args);
+};
+console.error = function (...args) {
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+  originalError(`[${timestamp}] 🚨`, ...args);
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HEARTBEAT_INTERVAL = 5000;
-const DRIFT_INTERVAL = 1000 * 60 * 60; // Drift every hour
+const DRIFT_INTERVAL = 1000 * 60 * 60 * 24; // Drift every 24 hours
+const COOLDOWN_MS = 1000 * 60 * 4; // 4 Minutes
 let isExecuting = false;
+let isOnCooldown = false;
 
 async function startZoneGovernor() {
   console.log("🧠 Zown Governor Daemon Online.");
@@ -25,6 +38,12 @@ async function startZoneGovernor() {
 
   setInterval(async () => {
     if (isExecuting) return;
+    
+    if (isOnCooldown) {
+      // Only log once per minute to avoid spamming the console
+      if (new Date().getSeconds() % 60 === 0) console.log(`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ⏳ System on 4-minute cooldown...`);
+      return;
+    }
     
     const nowStatePath = path.resolve(__dirname, '../../now.md');
     if (!fs.existsSync(nowStatePath)) return;
@@ -113,71 +132,169 @@ Value Units (VU): [Assign value]
       return;
     }
 
-    const rawTaskLine = pendingMatch[1].trim().split('\n')[0];
-    const currentTask = rawTaskLine.replace(/^-\s+/, '');
-    if (!currentTask) return;
+    // --- MULTI-LINE TASK PARSER ---
+    const fullQueueText = pendingMatch[1].trim();
+    if (!fullQueueText) return;
 
-    nowState = nowState.replace(rawTaskLine, '');
-    nowState = nowState.replace(/\[Current State\]\n.*/, `[Current State]\nProcessing: ${currentTask}`);
+    // Extract the very first task block (everything up to the next bullet point or end of file)
+    const taskBlocks = fullQueueText.split(/^-\s+Task:/m).filter(block => block.trim() !== '');
+    if (taskBlocks.length === 0) return;
+
+    const currentTask = "Task:" + taskBlocks[0].trim(); // The complete multi-line ticket
+
+    // Remove only the exact block we extracted from the queue
+    const escapedTask = taskBlocks[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const queueRegex = new RegExp(`^-\\s+Task:\\s*${escapedTask}\\n?`, 'm');
+    nowState = nowState.replace(queueRegex, '');
+
+    // Update current state with a truncated summary so now.md doesn't get massive
+    const summaryName = currentTask.split('\n')[0].substring(0, 50) + '...';
+    nowState = nowState.replace(/\[Current State\]\n.*/, `[Current State]\nProcessing: ${summaryName}`);
     fs.writeFileSync(nowStatePath, nowState, 'utf8');
 
     isExecuting = true;
-    console.log(`\n📥 Intercepted Task: ${currentTask}`);
+    console.log(`\n📥 Intercepted Task: ${summaryName}`);
 
-    const route = await determineModel(currentTask);
-    const thinkingLevel = route === 'gemini-3-pro' ? 'high' : 'low';
-    console.log(`🚦 Subconscious Route: ${route} (Translating to --thinking ${thinkingLevel})`);
+    // --- STRICT STAGE-BASED AGENT ROUTING WITH FALLBACK ---
+    let agentId = 'governor-flash'; // Default to the cheap, fast agent
+    // Only wake up the heavy Pro agent for actual coding, UNLESS we are in a fallback state
+    if ((currentTask.includes('Stage 3') || currentTask.includes('Stage 4')) && !currentTask.includes('[FALLBACK]')) {
+      agentId = 'governor-pro';
+    }
+    console.log(`🚦 Governor Routing: Handing off to Agent ${agentId} based on pipeline stage.`);
 
     const openClawProcess = spawn('openclaw', [
       'agent', 
       '--message', currentTask, 
-      '--thinking', thinkingLevel,
+      '--agent', agentId,
       '--session-id', 'zown-governor-loop'
     ], { 
       env: process.env 
     });
 
+    // --- NEW: TRACK AGENT OUTPUT TO CATCH SILENT ERRORS ---
+    let agentOutput = '';
     openClawProcess.stdout.on('data', (data) => {
-      console.log(`🤖 OpenClaw: ${data.toString().trim()}`);
+      const text = data.toString();
+      agentOutput += text;
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      lines.forEach(line => console.log(`🤖 OpenClaw: ${line}`));
     });
 
     openClawProcess.stderr.on('data', (data) => {
-      console.error(`🚨 OpenClaw ERROR: ${data.toString().trim()}`);
+      const text = data.toString();
+      agentOutput += text;
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      lines.forEach(line => console.error(`🚨 OpenClaw ERROR: ${line}`));
     });
 
     openClawProcess.on('close', async (code) => {
-      if (code === 0) {
+      let finalState = fs.readFileSync(nowStatePath, 'utf8');
+      const outputLower = agentOutput.toLowerCase();
+
+      // --- EVALUATE FAILURE STATES ---
+      const isRateLimited = outputLower.includes('rate limit reached') || outputLower.includes('429') || outputLower.includes('quota');
+      const isError = code !== 0 || outputLower.includes('openclaw error:');
+
+      if (isRateLimited || isError) {
+        let retryTask = currentTask;
+
+        // NEW: The Fallback Trigger
+        if (isRateLimited && agentId === 'governor-pro' && !currentTask.includes('[FALLBACK]')) {
+          console.log(`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ⚠️ Pro API capped. Downgrading task to Flash fallback.`);
+          retryTask = `[FALLBACK] ${currentTask}`;
+        } else {
+          console.log(`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ⚠️ Task Failed or Rate Limited. Holding at current stage and re-queuing.`);
+        }
+        // Re-inject the task (either identical, or tagged for fallback)
+        finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n- ${retryTask}`);
+      } else {
         console.log(`✅ Task complete. Consolidating memory...`);
+        // Use determineModel for logging, but we've already routed execution
+        const route = agentId;
         await storeInChroma(currentTask, { type: 'execution', model: route });
         
-        let finalState = fs.readFileSync(nowStatePath, 'utf8');
-        
-        // --- THE PIPELINE AUTOMATION ---
-        // If we just finished Stage 4, automatically queue Stage 6 (Git Push)
+        // --- THE FULL 9-STAGE PIPELINE AUTOMATION ---
         const stageMatch = finalState.match(/\[Pipeline Stage\]\n(.*)/);
-        if (stageMatch && stageMatch[1].trim().includes('4. Core Implementation')) {
-          console.log(`🚀 Advancing Pipeline to Stage 6: PR Creation...`);
-          
-          // Advance the stage
-          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n6. PR Creation`);
-          
-          // Automatically queue the Git Push task
-          const autoPushTask = `- Task: Stage 4 complete. Execute Stage 6: Run git status, add the new files, commit with an Agile formatted message, and git push to the remote repository.`;
-          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${autoPushTask}`);
-        } else if (stageMatch && stageMatch[1].trim().includes('6. PR Creation')) {
-          console.log(`🎉 Pipeline Complete. Resetting state...`);
-          // Reset the stage so the Internal Monologue can listen for new webhooks
-          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\nNone. Awaiting Input.`);
-        }
+        const currentStageText = stageMatch ? stageMatch[1].trim() : '';
 
-        finalState = finalState.replace(/\[Current State\]\n.*/, `[Current State]\nIdling.`);
-        fs.writeFileSync(nowStatePath, finalState, 'utf8');
-      } else {
-        console.error(`❌ OpenClaw failed with exit code ${code}.`);
-        let failState = fs.readFileSync(nowStatePath, 'utf8');
-        failState = failState.replace(/\[Current State\]\n.*/, `[Current State]\nIdling.`);
-        fs.writeFileSync(nowStatePath, failState, 'utf8');
+        if (currentStageText.includes('1. Task Acquisition')) {
+          console.log(`🚀 Advancing to Stage 2: Branch & Scaffolding...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n2. Branch & Scaffolding`);
+          const nextTask = `- Task: Execute Stage 2 (Branch & Scaffolding). Based on the ticket you just selected, create a new feature branch in the correct repository and scaffold the necessary files.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('1. Analyze & Ticket')) {
+          console.log(`🚀 Advancing to Stage 2: Branch & Scaffolding...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n2. Branch & Scaffolding`);
+          const nextTask = `- Task: Execute Stage 2. Check gh issue list for the ticket we just created. Create a new branch 'feat/issue-ID' and scaffold the initial Next.js files.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('2. Branch & Scaffolding')) {
+          console.log(`🚀 Advancing to Stage 3: Core Implementation...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n3. Core Implementation`);
+          const nextTask = `- Task: Execute Stage 3. Write the core logic for the active feature branch.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('3. Core Implementation')) {
+          console.log(`🚀 Advancing to Stage 4: Testing & Hardening...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n4. Testing & Hardening`);
+          const nextTask = `- Task: Execute Stage 4. Run 'npm run build' locally to verify code. Fix any Turbopack regressions.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('4. Testing & Hardening')) {
+          console.log(`🚀 Advancing to Stage 5: PR Creation...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n5. PR Creation`);
+          const nextTask = `- Task: Execute Stage 5. Commit the code and use the 'gh' CLI to create a Pull Request targeting the 'develop' branch.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('5. PR Creation')) {
+          console.log(`🚀 Advancing to Stage 6: Merge to Develop...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n6. Merge to Develop`);
+          const nextTask = `- Task: Execute Stage 6. Use 'gh pr merge' to merge the active PR into 'develop'. Delete the local and remote feature branch.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('6. Merge to Develop')) {
+          console.log(`🚀 Advancing to Stage 7: Production Release...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n7. Production Release`);
+          const nextTask = `- Task: Execute Stage 7. Merge 'develop' into 'main' and push to origin to trigger Vercel deployment.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('7. Production Release')) {
+          console.log(`🚀 Advancing to Stage 8: Health Verification...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n8. Health Verification`);
+          const nextTask = `- Task: Execute Stage 8. Send a fetch request to the live Vercel URL to verify it returns a 200 OK status.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('8. Health Verification')) {
+          console.log(`🚀 Advancing to Stage 9: Summary & Sync...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n9. Summary & Sync`);
+          const nextTask = `- Task: Execute Stage 9. Send a summary of the completed cycle to Discord via the webhook, and push the memory database.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        } else if (currentStageText.includes('9. Summary & Sync')) {
+          console.log(`🎉 Pipeline Complete. Initiating autonomous cross-project cycle...`);
+          finalState = finalState.replace(/\[Pipeline Stage\]\n.*/, `[Pipeline Stage]\n1. Task Acquisition`);
+          
+          // 1. Extract the Project Portfolio directly from the subconscious
+          const portfolioMatch = finalState.match(/\[Project Portfolio\]\n([\s\S]*?)(?=\n\[|$)/);
+          const portfolioData = portfolioMatch ? portfolioMatch[1].trim() : 'No active projects found.';
+          
+          // 2. Build the dynamic cascading prompt for Gemini Flash
+          const nextTask = `- Task: Execute Stage 1 (Task Acquisition). Here is your Subconscious Project Portfolio from now.md:
+${portfolioData}
+
+Instructions:
+1. Analyze the portfolio above.
+2. For each project, navigate to its directory (resolve path relative to workspace) and run 'gh issue list --limit 5'.
+3. Identify the single highest priority ticket (P0/High > P1/Medium) across ALL projects.
+4. If a ticket is found, select it, assign it to yourself, and prepare for Stage 2.
+5. If no tickets exist, create a new P1 ticket in the highest priority project (Sunny Archive) titled "Automated Engineering Ideation" and select it.`;
+          finalState = finalState.replace(/\[Pending Queue\]/, `[Pending Queue]\n${nextTask}`);
+        }
       }
+
+      // --- THE 4-MINUTE THROTTLE (Runs regardless of success/fail to wait out rate limits) ---
+      isOnCooldown = true;
+      console.log(`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ⏱️ Task finished. Initiating 4-minute rate-limit cooldown.`);
+      setTimeout(() => {
+        isOnCooldown = false;
+        console.log(`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] 🟢 Cooldown complete. Resuming loop.`);
+      }, COOLDOWN_MS);
+
+      finalState = finalState.replace(/\[Current State\]\n.*/, `[Current State]\nIdling.`);
+      fs.writeFileSync(nowStatePath, finalState, 'utf8');
       isExecuting = false;
     });
   }, HEARTBEAT_INTERVAL);
